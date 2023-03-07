@@ -1,17 +1,88 @@
 part of story;
 
-class StoryPagePayload {
-  StoryPagePayload({
+enum StoryType { image, text, custom }
+
+class Story {
+  const Story({
+    required this.builder,
+    this.duration = const Duration(seconds: 5),
+    this.paused = false,
+  }) : type = StoryType.custom;
+
+  final StoryType type;
+  final Duration duration;
+  final bool paused;
+
+  final Widget Function(
+    BuildContext context,
+    StoryPagerController controller,
+  ) builder;
+
+  StoryPagerItemOptions toItemOptions() => StoryPagerItemOptions(
+        duration: duration,
+        paused: paused,
+      );
+}
+
+class ImageStory extends Story {
+  ImageStory({
+    required this.image,
+    this.constraints = const BoxConstraints(maxHeight: 280),
     this.backgroundColor = const Color(0x00000000),
     this.useImageBlurredEffect = false,
     this.showMoreButton,
     this.textPadding = const EdgeInsets.all(12),
-    this.image,
     this.text,
-  });
+    super.duration,
+  }) : super(
+          builder: (_, controller) {
+            return Positioned.fill(
+              child: Stack(
+                children: [
+                  ColoredBox(color: backgroundColor),
+                  if (useImageBlurredEffect)
+                    Positioned.fill(
+                      child: ClipRRect(
+                        child: ImageFiltered(
+                          imageFilter: ImageFilter.blur(sigmaX: 60, sigmaY: 60),
+                          child: _StoryImage(image, fit: BoxFit.cover),
+                        ),
+                      ),
+                    ),
+                  Positioned.fill(child: _StoryImage(image)),
+                  Positioned.fill(
+                    child: StoryPagerGestures(controller: controller),
+                  ),
+                  if (text != null)
+                    Positioned(
+                      bottom: 0,
+                      right: 0,
+                      left: 0,
+                      child: StoryExpandable(
+                        text: text,
+                        padding: textPadding,
+                        constraints: constraints,
+                        backgroundColorCollapsed: Colors.black.withOpacity(0.2),
+                        onChange: (isExpanded) {
+                          if (isExpanded) {
+                            controller.pause();
+                          } else {
+                            controller.resume();
+                          }
+                        },
+                      ),
+                    )
+                ],
+              ),
+            );
+          },
+        );
+
+  @override
+  StoryType get type => StoryType.image;
 
   /// Image
-  final ImageProvider? image;
+  final ImageProvider image;
   final bool useImageBlurredEffect;
 
   /// Core
@@ -19,407 +90,231 @@ class StoryPagePayload {
 
   ///
   final Text? text;
-  final EdgeInsets textPadding;
   final Widget? showMoreButton;
+  final EdgeInsets textPadding;
+  final BoxConstraints constraints;
 }
 
-class StoryPage extends StatefulWidget {
+class StoryPage<T extends Story> extends StatefulWidget {
   const StoryPage({
-    required this.items,
-    this.onWantGoBack,
-    this.onComplete,
+    required this.stories,
     this.onChange,
+    this.onPageComplete,
+    this.onPageGoBack,
+    this.viewedCount = 0,
+    this.options = const StoryPagerOptions(),
     super.key,
   });
 
-  final List<StoryPagePayload> items;
-  final void Function()? onComplete;
-  final void Function()? onWantGoBack;
+  /// Callbacks
+  final void Function()? onPageComplete;
+  final void Function()? onPageGoBack;
   final void Function(int index)? onChange;
+
+  /// Options
+  final StoryPagerOptions options;
+
+  /// Base
+  final int viewedCount;
+  final List<T> stories;
 
   @override
   State<StoryPage> createState() => _StoryPageState();
 }
 
-class _StoryPageState extends State<StoryPage>
-    with SingleTickerProviderStateMixin {
+class _StoryPageState extends State<StoryPage> {
   final pagerController = StoryPagerController();
+  late var index = widget.viewedCount;
 
-  late final animationController = AnimationController(
-    vsync: this,
-    duration: const Duration(milliseconds: 350),
-  );
-
-  late final colorAnimation = ColorTween(
-    begin: Colors.transparent,
-    end: Colors.black.withOpacity(0.6),
-  ).animate(animationController);
-
-  late final transitionAnimation = Tween(
-    begin: const Offset(0, 0.74),
-    end: const Offset(0, 0),
-  ).animate(CurvedAnimation(
-    curve: Curves.easeOutQuart,
-    parent: animationController,
-  ));
-
-  var paused = false;
-  var activeIndex = 0;
-  var isHolding = false;
-  var isDrawerOpen = false;
-
-  Timer? holdingTimer;
-  final holdDuration = const Duration(milliseconds: 125);
-  final drawerMinSize = 0.08;
-  final drawerMaxSize = 0.40;
-
-  Future<void> next() async {
-    if (isHolding) {
-      return;
-    }
-
-    if (isDrawerOpen) {
-      closeDrawer();
-    }
-
-    if ((activeIndex + 1) < widget.items.length) {
-      setState(() {
-        activeIndex++;
-      });
-
-      widget.onChange?.call(activeIndex);
-    } else {
-      if (widget.onComplete != null) {
-        widget.onComplete?.call();
-      } else {
-        setState(() {
-          activeIndex = 0;
-        });
-      }
-    }
+  void onPageChangeHandler(int i) {
+    setState(() {
+      index = i;
+    });
   }
 
-  Future<void> prev() async {
-    if (isHolding) {
-      return;
-    }
+  @override
+  Widget build(BuildContext context) {
+    final story = widget.stories[index];
 
-    if (isDrawerOpen) {
-      closeDrawer();
-    }
+    pagerController.index = index;
 
-    if (activeIndex > 0) {
-      setState(() {
-        activeIndex--;
-      });
-
-      widget.onChange?.call(activeIndex);
-    } else {
-      widget.onWantGoBack?.call();
-    }
-  }
-
-  Widget builder(StoryPagePayload payload) {
-    return Stack(
-      fit: StackFit.expand,
-      children: [
-        ColoredBox(color: payload.backgroundColor),
-        if (payload.image != null && payload.useImageBlurredEffect)
-          Positioned.fill(
-            child: ClipRRect(
-              child: ImageFiltered(
-                imageFilter: ImageFilter.blur(sigmaX: 60, sigmaY: 60),
-                child: _StoryImage(payload.image!, fit: BoxFit.cover),
+    switch (story.type) {
+      ///
+      case StoryType.image:
+        return Stack(
+          children: [
+            story.builder(context, pagerController),
+            Positioned(
+              top: 0,
+              left: 0,
+              right: 0,
+              child: StoryPager(
+                options: widget.options,
+                initialIndex: widget.viewedCount,
+                onChange: onPageChangeHandler,
+                controller: pagerController,
+                stories: widget.stories.map((e) => e.toItemOptions()).toList(),
               ),
             ),
-          ),
-        if (payload.image != null) _StoryImage(payload.image!),
-      ],
-    );
-  }
-
-  void toggleDrawer() {
-    if (!isDrawerOpen) {
-      openDrawer();
-    } else {
-      closeDrawer();
-    }
-  }
-
-  void openDrawer() {
-    if (!isDrawerOpen) {
-      pagerController.pause();
-      animationController.forward();
-      setState(() {
-        isDrawerOpen = true;
-      });
-    }
-  }
-
-  void closeDrawer() {
-    if (isDrawerOpen) {
-      pagerController.resume();
-      animationController.reverse();
-      setState(() {
-        isDrawerOpen = false;
-      });
-    }
-  }
-
-  void onTapDownHandler(_) {
-    holdingTimer?.cancel();
-    holdingTimer = Timer(holdDuration, () {
-      isHolding = true;
-      pagerController.pause();
-    });
-  }
-
-  void onTapUpHandler(_) {
-    holdingTimer?.cancel();
-    holdingTimer = Timer(holdDuration, () {
-      isHolding = false;
-      pagerController.resume();
-    });
-  }
-
-  Future<bool> onWillPopScope() async {
-    if (isDrawerOpen) {
-      closeDrawer();
-      return false;
-    }
-
-    return true;
-  }
-
-  @override
-  void dispose() {
-    animationController.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final payload = widget.items.elementAt(activeIndex);
-
-    return WillPopScope(
-      onWillPop: onWillPopScope,
-      child: Scaffold(
-        backgroundColor: Colors.white,
-        body: SizedBox.expand(
-          child: Stack(
-            children: [
-              Positioned.fill(child: builder(payload)),
-              Positioned(
-                top: 0,
-                left: 0,
-                right: 0,
-                child: StoryPager(
-                  itemCount: widget.items.length,
-                  controller: pagerController,
-                  activeIndex: activeIndex,
-                  onComplete: next,
-                ),
-              ),
-              Positioned.fill(
-                child: Row(
-                  children: [
-                    Expanded(
-                      child: GestureDetector(
-                        onTap: prev,
-                        onTapUp: onTapUpHandler,
-                        onTapDown: onTapDownHandler,
-                        onTapCancel: () => onTapUpHandler(null),
-                      ),
-                    ),
-                    Expanded(
-                      child: GestureDetector(
-                        onTap: next,
-                        onTapUp: onTapUpHandler,
-                        onTapDown: onTapDownHandler,
-                        onTapCancel: () => onTapUpHandler(null),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              if (payload.text != null)
-                Positioned(
-                  bottom: 0,
-                  right: 0,
-                  left: 0,
-                  child: AnimatedSize(
-                    alignment: Alignment.bottomCenter,
-                    duration: const Duration(milliseconds: 350),
-                    curve: Curves.easeOutQuart,
-                    child: ConstrainedBox(
-                      constraints: const BoxConstraints(maxHeight: 280.0),
-                      child: AnimatedBuilder(
-                        animation: animationController,
-                        builder: (context, child) {
-                          return ColoredBox(
-                            color: colorAnimation.value!,
-                            child: child,
-                          );
-                        },
-                        child: Stack(
-                          children: [
-                            RawScrollbar(
-                              thickness: 2,
-                              thumbColor: Colors.white,
-                              radius: const Radius.circular(8),
-                              padding: const EdgeInsets.all(4),
-                              child: SingleChildScrollView(
-                                  physics: const ClampingScrollPhysics(),
-                                  padding: payload.textPadding,
-                                  child: LayoutBuilder(
-                                    builder: (context, constraints) {
-                                      if (payload.showMoreButton != null) {
-                                        final textPainter = TextPainter(
-                                          ellipsis: '...',
-                                          text: TextSpan(
-                                            text: payload.text!.data!,
-                                            style: payload.text?.style,
-                                          ),
-                                          textDirection: TextDirection.ltr,
-                                          maxLines: 2,
-                                        )..layout(
-                                            minWidth: constraints.minWidth,
-                                            maxWidth: constraints.maxWidth -
-                                                payload.textPadding.horizontal,
-                                          );
-
-                                        return Column(
-                                          mainAxisSize: MainAxisSize.min,
-                                          children: [
-                                            Text(
-                                              payload.text!.data!,
-                                              style: payload.text?.style,
-                                              maxLines: isDrawerOpen ? null : 2,
-                                              overflow: isDrawerOpen
-                                                  ? null
-                                                  : TextOverflow.ellipsis,
-                                            ),
-                                            if (!isDrawerOpen &&
-                                                textPainter.didExceedMaxLines)
-                                              payload.showMoreButton!
-                                          ],
-                                        );
-                                      }
-
-                                      return ExpandableText(
-                                        payload.text!.data!,
-                                        maxLines: 2,
-                                        buttonLabelClosed: 'Devamını Gör',
-                                        buttonLabelOpened: '',
-                                        isExpanded: isDrawerOpen,
-                                        style: payload.text?.style,
-                                        buttonTextStyle: const TextStyle(
-                                          fontWeight: FontWeight.bold,
-                                        ),
-                                      );
-                                    },
-                                  )),
-                            ),
-                            Positioned.fill(
-                              child: GestureDetector(
-                                onTap: toggleDrawer,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-                  ),
-                )
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class ExpandableText extends StatelessWidget {
-  const ExpandableText(
-    this.value, {
-    super.key,
-    this.maxLines = 2,
-    this.style,
-    this.buttonTextStyle,
-    this.buttonLabelClosed = 'show more',
-    this.buttonLabelOpened = 'show less',
-    this.isExpanded = false,
-    this.ellipsis = '... ',
-  });
-
-  final String value;
-  final int maxLines;
-  final TextStyle? style;
-  final TextStyle? buttonTextStyle;
-  final String buttonLabelClosed;
-  final String buttonLabelOpened;
-  final bool isExpanded;
-  final String ellipsis;
-
-  @override
-  Widget build(BuildContext context) {
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        final textPainter = TextPainter(
-          text: TextSpan(text: value, style: style),
-          textDirection: TextDirection.ltr,
-          maxLines: maxLines,
-          ellipsis: ellipsis,
-        )..layout(
-            minWidth: constraints.minWidth,
-            maxWidth: constraints.maxWidth,
-          );
-
-        final moreTextPainter = TextPainter(
-          text: TextSpan(
-            text: isExpanded ? buttonLabelOpened : buttonLabelClosed,
-            style: buttonTextStyle,
-          ),
-          textDirection: TextDirection.ltr,
-          maxLines: 1,
-        )..layout(
-            minWidth: constraints.minWidth,
-            maxWidth: constraints.maxWidth,
-          );
-
-        final position = textPainter.getPositionForOffset(Offset(
-          textPainter.size.width - moreTextPainter.size.width,
-          textPainter.height,
-        ));
-
-        final endOffset = textPainter.getOffsetBefore(position.offset) ?? 0;
-
-        var text = value;
-
-        if (textPainter.didExceedMaxLines) {
-          text = isExpanded
-              ? value
-              : '${value.substring(0, endOffset - ellipsis.length)}$ellipsis';
-        }
-
-        return RichText(
-          softWrap: true,
-          overflow: TextOverflow.clip,
-          text: TextSpan(
-            text: text,
-            style: style,
-            children: [
-              // WidgetSpan(child: child),
-              if (textPainter.didExceedMaxLines)
-                TextSpan(
-                  text: isExpanded ? buttonLabelOpened : buttonLabelClosed,
-                  style: buttonTextStyle,
-                  // recognizer: TapGestureRecognizer()..onTap = onTapHandler,
-                ),
-            ],
-          ),
+          ],
         );
-      },
-    );
+
+      ///
+      case StoryType.text:
+        return const SizedBox.shrink();
+
+      ///
+      case StoryType.custom:
+        return Stack(
+          children: [
+            story.builder(context, pagerController),
+            Positioned(
+              top: 0,
+              left: 0,
+              right: 0,
+              child: StoryPager(
+                options: widget.options,
+                initialIndex: widget.viewedCount,
+                onChange: onPageChangeHandler,
+                controller: pagerController,
+                stories: widget.stories.map((e) => e.toItemOptions()).toList(),
+              ),
+            ),
+          ],
+        );
+    }
   }
 }
+
+// class StoryPage extends StatefulWidget {
+//   const StoryPage.custom({
+//     required this.itemCount,
+//     required this.itemBuilder,
+//     this.onWantGoBack,
+//     this.onComplete,
+//     this.onChange,
+//     this.viewedCount = 0,
+//     this.pagerOptions = const StoryPagerOptions(),
+//     super.key,
+//   });
+
+//   // StoryPage.image();
+//   // StoryPage.video();
+//   // StoryPage.text();
+
+//   final void Function()? onComplete;
+//   final void Function()? onWantGoBack;
+//   final void Function(int index)? onChange;
+//   final int viewedCount;
+
+//   final StoryPagerOptions pagerOptions;
+
+//   final int itemCount;
+//   final StoryPagePayload Function(BuildContext, int) itemBuilder;
+
+//   @override
+//   State<StoryPage> createState() => _StoryPageState();
+// }
+
+// class _StoryPageState extends State<StoryPage> {
+//   final pagerController = StoryPagerController();
+
+//   late var index = widget.viewedCount;
+//   var isDrawerOpen = false;
+
+//   void drawerOpenedHandler() {
+//     pagerController.pause();
+//     setState(() {
+//       isDrawerOpen = true;
+//     });
+//   }
+
+//   void drawerClosedHandler() {
+//     pagerController.resume();
+//     setState(() {
+//       isDrawerOpen = false;
+//     });
+//   }
+
+//   Future<bool> onWillPopScope() async {
+//     if (isDrawerOpen) {
+//       drawerClosedHandler();
+//       return false;
+//     }
+
+//     return true;
+//   }
+
+//   void onChangeHandler(int index) {
+//     drawerClosedHandler();
+
+//     setState(() {
+//       this.index = index;
+//     });
+//   }
+
+//   @override
+//   Widget build(BuildContext context) {
+//     final payload = widget.itemBuilder(context, index);
+
+//     return LayoutBuilder(builder: (context, constraints) {
+//       return WillPopScope(
+//         onWillPop: onWillPopScope,
+//         child: Material(
+//           color: Colors.white,
+//           type: MaterialType.card,
+//           child: Stack(
+//             children: [
+//               ColoredBox(color: payload.backgroundColor),
+//               if (payload.image != null && payload.useImageBlurredEffect)
+//                 Positioned.fill(
+//                   child: ClipRRect(
+//                     child: ImageFiltered(
+//                       imageFilter: ImageFilter.blur(sigmaX: 60, sigmaY: 60),
+//                       child: _StoryImage(payload.image!, fit: BoxFit.cover),
+//                     ),
+//                   ),
+//                 ),
+//               if (payload.image != null)
+//                 Positioned.fill(
+//                   child: _StoryImage(payload.image!),
+//                 ),
+//               Positioned.fill(
+//                 child: StoryPager(
+//                   storyCount: widget.itemCount,
+//                   controller: pagerController,
+//                   onChange: onChangeHandler,
+//                   onComplete: widget.onComplete,
+//                   onGoBack: widget.onWantGoBack,
+//                   initialIndex: index,
+//                   options: widget.pagerOptions,
+//                 ),
+//               ),
+              // if (payload.text != null)
+              //   Positioned(
+              //     bottom: 0,
+              //     right: 0,
+              //     left: 0,
+              //     child: StoryExpandable(
+              //       constraints: BoxConstraints(
+              //         maxHeight: constraints.maxHeight * 0.4,
+              //       ),
+              //       text: payload.text!,
+              //       isOpen: isDrawerOpen,
+              //       backgroundColorCollapsed: Colors.black.withOpacity(0.2),
+              //       onChange: (isExpanded) {
+              //         if (isExpanded) {
+              //           drawerOpenedHandler();
+              //         } else {
+              //           drawerClosedHandler();
+              //         }
+              //       },
+              //     ),
+              //   )
+//             ],
+//           ),
+//         ),
+//       );
+//     });
+//   }
+// }
