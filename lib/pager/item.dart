@@ -62,7 +62,7 @@ class _StoryPagerItem extends StatefulWidget {
 }
 
 class _StoryPagerItemState extends State<_StoryPagerItem>
-    with SingleTickerProviderStateMixin, AutomaticKeepAliveClientMixin {
+    with SingleTickerProviderStateMixin {
   late var paused = widget.options.paused;
 
   /// Base controller
@@ -139,8 +139,6 @@ class _StoryPagerItemState extends State<_StoryPagerItem>
 
   @override
   Widget build(BuildContext context) {
-    super.build(context);
-
     return Expanded(
       child: SizedBox(
         height: widget.options.height,
@@ -160,7 +158,4 @@ class _StoryPagerItemState extends State<_StoryPagerItem>
       ),
     );
   }
-
-  @override
-  bool get wantKeepAlive => true;
 }

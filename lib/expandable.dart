@@ -13,8 +13,8 @@ class StoryExpandable extends StatefulWidget {
     this.onChange,
     this.constraints = const BoxConstraints(maxHeight: 240),
     this.readMoreButton,
-    this.readMoreTextExpanded = 'read more',
-    this.readMoreTextCollapsed = 'read less',
+    this.readMoreTextExpanded = 'read less',
+    this.readMoreTextCollapsed = 'read more',
     super.key,
   });
 
@@ -127,9 +127,9 @@ class _StoryExpandableState extends State<StoryExpandable> {
 
                         return ExpandableText(
                           widget.text.data!,
-                          maxLines: 2,
-                          buttonLabelClosed: widget.readMoreTextExpanded,
-                          buttonLabelOpened: widget.readMoreTextCollapsed,
+                          maxLines: 4,
+                          buttonLabelClosed: widget.readMoreTextCollapsed,
+                          buttonLabelOpened: widget.readMoreTextExpanded,
                           isExpanded: isExpanded,
                           style: widget.text.style,
                           buttonTextStyle: const TextStyle(

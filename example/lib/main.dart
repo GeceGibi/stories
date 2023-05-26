@@ -104,7 +104,7 @@ class _StoryExampleState extends State<StoryExample> {
   });
 
   late final videoStories = videos.map((e) {
-    return Story(
+    return Story.builder(
       paused: true,
       duration: Duration(milliseconds: e['duration']),
       builder: (context, controller) {
@@ -134,7 +134,7 @@ class _StoryExampleState extends State<StoryExample> {
   }).toList();
 
   late final textStories = videos.map((e) {
-    return Story(
+    return Story.builder(
       builder: (context, controller) {
         return ColoredBox(
           color: Colors.blue,

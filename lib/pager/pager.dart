@@ -38,9 +38,9 @@ class StoryPager extends StatefulWidget {
     this.options = const StoryPagerOptions(),
     this.controller,
     this.initialIndex = 0,
-    this.onComplete,
+    this.onWantGoNext,
+    this.onWantGoPrev,
     this.onChange,
-    this.onGoBack,
     super.key,
   });
 
@@ -52,8 +52,8 @@ class StoryPager extends StatefulWidget {
 
   /// Callbacks
   final void Function(int index)? onChange;
-  final void Function()? onGoBack;
-  final void Function()? onComplete;
+  final void Function()? onWantGoPrev;
+  final void Function()? onWantGoNext;
 
   @override
   State<StoryPager> createState() => _StoryPagerState();
@@ -92,7 +92,7 @@ class _StoryPagerState extends State<StoryPager> {
       setState(() => index++);
       widget.onChange?.call(index);
     } else {
-      widget.onComplete?.call();
+      widget.onWantGoNext?.call();
     }
   }
 
@@ -105,7 +105,7 @@ class _StoryPagerState extends State<StoryPager> {
       setState(() => index--);
       widget.onChange?.call(index);
     } else {
-      widget.onGoBack?.call();
+      widget.onWantGoPrev?.call();
     }
   }
 

@@ -11,4 +11,5 @@ export 'package:story/pager/pager.dart';
 part 'bar.dart';
 part 'page.dart';
 part 'image.dart';
+part 'models.dart';
 part 'expandable.dart';
